@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    :root {
+      --primary-color: #3b82f6;         /* Bright blue */
+      --primary-hover: #2563eb;         /* Slightly darker blue */
+      --background-light: #f8fafc;      /* Very light blue-gray */
+      --background-dark: #0f172a;       /* Deep navy */
+      --text-light: #334155;            /* Dark slate */
+      --text-dark: #e2e8f0;             /* Light gray */
+      --success-light: #dcfce7;         /* Light green */
+      --success-dark: #166534;          /* Deep green */
+      --error-light: #fee2e2;           /* Light red */
+      --error-dark: #991b1b;            /* Deep red */
+      --warning-light: #fef3c7;         /* Light yellow */
+      --warning-dark: #92400e;          /* Deep orange */
+      --card-light: #ffffff;            /* Pure white */
+      --card-dark: #1e293b;             /* Navy blue */
+      --border-light: #e2e8f0;          /* Light gray */
+      --border-dark: #334155;           /* Dark slate */
+      --shadow-light: 0 4px 6px -1px rgba(15, 23, 42, 0.1), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+      --shadow-dark: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 350px;
+      padding: 16px;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      transition: all 0.3s ease;
+      line-height: 1.5;
+    }
+
+    body.light-mode {
+      background-color: var(--background-light);
+      color: var(--text-light);
+    }
+
+    body.dark-mode {
+      background-color: var(--background-dark);
+      color: var(--text-dark);
+    }
+
+    .theme-toggle {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 16px;
+      width: 36px;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.3s ease;
+    }
+
+    .light-mode .theme-toggle {
+      background-color: #f0f2f5;
+      color: var(--text-light);
+    }
+
+    .dark-mode .theme-toggle {
+      background-color: #3d4852;
+      color: var(--text-dark);
+    }
+
+    .theme-toggle:hover {
+      transform: scale(1.1);
+    }
+
+    .game-card {
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 16px;
+      transition: all 0.3s ease;
+    }
+
+    .light-mode .game-card {
+      background-color: var(--card-light);
+      box-shadow: var(--shadow-light);
+    }
+
+    .dark-mode .game-card {
+      background-color: var(--card-dark);
+      box-shadow: var(--shadow-dark);
+    }
+
+    .game-thumbnail {
+      width: 100%;
+      height: 180px;
+      object-fit: cover;
+    }
+
+    .game-info {
+      padding: 16px;
+    }
+
+    .game-title {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: inherit;
+    }
+
+    .search-container {
+      margin: 16px 0;
+    }
+
+    .input-wrapper {
+      position: relative;
+      margin-bottom: 12px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 2px solid transparent;
+      font-size: 15px;
+      transition: all 0.3s ease;
+      background-color: rgba(0, 0, 0, 0.05);
+    }
+
+    .light-mode input {
+      background-color: rgba(0, 0, 0, 0.05);
+      color: var(--text-light);
+    }
+
+    .dark-mode input {
+      background-color: rgba(255, 255, 255, 0.1);
+      color: var(--text-dark);
+    }
+
+    input:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 3px rgba(0, 176, 111, 0.2);
+    }
+
+    .search-button {
+      width: 100%;
+      padding: 12px;
+      border: none;
+      border-radius: 12px;
+      background-color: var(--primary-color);
+      color: white;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .search-button:hover:not(:disabled) {
+      background-color: var(--primary-hover);
+      transform: scale(1.02);
+      box-shadow: 0 4px 12px rgba(0, 176, 111, 0.2);
+    }
+
+    .search-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .result {
+      margin-top: 16px;
+      padding: 16px;
+      border-radius: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .light-mode .success {
+      background-color: var(--success-light);
+      color: var(--success-dark);
+    }
+
+    .dark-mode .success {
+      background-color: rgba(46, 125, 50, 0.2);
+      color: #81c784;
+    }
+
+    .light-mode .error {
+      background-color: var(--error-light);
+      color: var(--error-dark);
+    }
+
+    .dark-mode .error {
+      background-color: rgba(198, 40, 40, 0.2);
+      color: #ef5350;
+    }
+
+    .light-mode .warning {
+      background-color: var(--warning-light);
+      color: var(--warning-dark);
+    }
+
+    .dark-mode .warning {
+      background-color: rgba(239, 108, 0, 0.2);
+      color: #ffb74d;
+    }
+
+    .join-button {
+      margin-top: 16px;
+    }
+
+    .join-link {
+      display: inline-block;
+      padding: 12px 24px;
+      background-color: var(--primary-color);
+      color: white;
+      text-decoration: none;
+      border-radius: 12px;
+      font-weight: 500;
+      transition: all 0.3s ease;
+    }
+
+    .join-link:hover {
+      background-color: var(--primary-hover);
+      transform: scale(1.02);
+      box-shadow: 0 4px 12px rgba(0, 176, 111, 0.2);
+    }
+
+    .verbose {
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 0.9em;
+      line-height: 1.6;
+    }
+
+    .light-mode .verbose {
+      background-color: rgba(0, 0, 0, 0.05);
+    }
+
+    .dark-mode .verbose {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .progress-container {
+      width: 100%;
+      height: 4px;
+      background-color: rgba(0, 0, 0, 0.1);
+      border-radius: 2px;
+      margin: 12px 0;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background-color: var(--primary-color);
+      transition: width 0.3s ease;
+      width: 0;
+    }
+
+    .dark-mode .progress-container {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    #debug-console {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 2px solid;
+    }
+
+    .light-mode #debug-console {
+      border-color: var(--border-light);
+    }
+
+    .dark-mode #debug-console {
+      border-color: var(--border-dark);
+    }
+
+    .console-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .console-title {
+      font-weight: 600;
+      font-size: 0.95em;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    #clearDebug {
+      padding: 6px 14px;
+      font-size: 0.85em;
+      border-radius: 8px;
+    }
+
+    .debug-log {
+      max-height: 200px;
+      overflow-y: auto;
+      border-radius: 12px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 0.85em;
+      line-height: 1.6;
+    }
+
+    .light-mode .debug-log {
+      background-color: #f1f5f9;
+    }
+
+    .dark-mode .debug-log {
+      background-color: #161f2e;
+    }
+
+    .debug-entry {
+      margin: 8px 0;
+      padding: 8px 0;
+      border-bottom: 1px solid;
+    }
+
+    .light-mode .debug-entry {
+      border-color: var(--border-light);
+    }
+
+    .dark-mode .debug-entry {
+      border-color: var(--border-dark);
+    }
+
+    .debug-entry.error { color: #ef4444; }   /* Bright red */
+    .debug-entry.warn { color: #f59e0b; }    /* Bright amber */
+    .debug-entry.info { color: #3b82f6; }    /* Bright blue */
+  </style>
+</head>
+<body class="light-mode">
+  <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+    🌓
+  </button>
+
+  <div class="game-card">
+    <img id="gameThumbnail" class="game-thumbnail" alt="Game thumbnail">
+    <div class="game-info">
+      <h3 id="gameTitle" class="game-title"></h3>
+    </div>
+  </div>
+
+  <div class="search-container">
+    <div class="input-wrapper">
+      <input 
+        type="text" 
+        id="username" 
+        placeholder="Enter username or ID" 
+        autocomplete="off"
+        spellcheck="false"
+      >
+    </div>
+    <div class="progress-container">
+      <div class="progress-bar" id="searchProgress"></div>
+    </div>
+    <button id="searchButton" class="search-button">Search</button>
+  </div>
+
+  <div id="result"></div>
+
+  <div id="debug-console">
+    <div class="console-header">
+      <span class="console-title">Debug Console</span>
+      <button id="clearDebug" class="search-button">Clear</button>
+    </div>
+    <div class="debug-log" id="debugLog"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
