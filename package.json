@@ -1,0 +1,15 @@
+{
+    "name": "roblox-server-search",
+    "version": "0.2.0",
+    "description": "A modern tool to find and join players in Roblox games",
+    "main": "bundle.js",
+    "scripts": {
+        "build": "node bundle.js",
+        "watch": "node bundle.js watch"
+    },
+    "author": "Adenics",
+    "license": "CC-BY-NC-4.0",
+    "devDependencies": {
+        "esbuild": "^0.17.19"
+    }
+}

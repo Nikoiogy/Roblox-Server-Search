@@ -1,0 +1,30 @@
+# Dependency directories
+node_modules/
+
+# Build output
+web-ext-artifacts/
+dist/
+build/
+
+# Dependency lock files
+package-lock.json
+
+# Bundled JavaScript files
+src/popup/popup-bundle.js
+src/popup/popup-bundle.js.map
+src/background/background-bundle.js
+src/background/background-bundle.js.map
+
+# Temporary files
+.DS_Store
+.env
+*.log
+
+# Editor directories
+.vscode/
+.idea/
+
+# Misc
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
