@@ -51,9 +51,6 @@ export class PlayerFinder {
             this.lastSearchTime = storage.lastSearchTime || 0;
             this.lastInputValue = storage.lastInput || '';
             
-            // Initialize theme
-            this.themeManager = new ThemeManager();
-            
             // Initialize UI elements
             this.progressBar = document.getElementById('searchProgress');
             this.progressManager = new ProgressManager(this.progressBar);
@@ -81,7 +78,7 @@ export class PlayerFinder {
             this.setupEventListeners();
             
             // Restore state including search progress if any
-            // await this.restoreState(storage);
+            await this.restoreState(storage);
             
             // Add visibility change handler
             document.addEventListener('visibilitychange', () => {
@@ -139,11 +136,11 @@ export class PlayerFinder {
             
             if (userCard) {
                 userCard.style.display = 'block';
-                void userCard.offsetHeight; // Force reflow
+                void userCard.offsetHeight;
             }
     
             const presence = await this.api.getUserPresence(userId);
-            this.updateUserStatus(presence);
+            updateUserStatus(document.getElementById('userStatus'), presence);
     
         } catch (error) {
             console.error('Profile initialization error:', error);
@@ -191,7 +188,7 @@ export class PlayerFinder {
     
             if (gameCard) {
                 gameCard.style.display = 'block';
-                void gameCard.offsetHeight; // Force reflow
+                void gameCard.offsetHeight;
             }
     
         } catch (error) {
@@ -201,9 +198,109 @@ export class PlayerFinder {
     }
 
     /**
+     * Restore state from storage
+     */
+    async restoreState(storage) {
+        try {
+            // Restore input first
+            await this.restoreInput();
+    
+            const searchButton = document.getElementById('searchButton');
+            const input = document.getElementById('searchInput');
+    
+            // If there was an active search
+            if (storage.searchState?.isSearching) {
+                // Set UI to searching state
+                this.isSearching = true;
+                await this.setSearchState(true);
+                searchButton.textContent = 'Searching...';
+                input.disabled = true;
+                input.style.opacity = '0.6';
+                searchButton.disabled = true;
+                
+                // Restore progress
+                if (storage.searchProgress) {
+                    this.progressManager.setProgress(storage.searchProgress.progressPercent || 50);
+                    
+                    let statusMessage = 'Searching servers...';
+                    let details = `Checked ${storage.searchProgress.serversChecked} servers`;
+                    
+                    if (storage.searchProgress.currentBatch) {
+                        statusMessage = 'Processing player data...';
+                        details = `Batch ${storage.searchProgress.currentBatch}/${storage.searchProgress.totalBatches}`;
+                    }
+                    
+                    await this.showStatus(statusMessage, details);
+                }
+    
+                // Resume progress checking
+                this.checkSearchProgress();
+            } 
+            // If search was completed with a result
+            else if (storage.searchResult) {
+                this.progressManager.complete();
+                if (storage.searchResult.found) {
+                    await this.displayJoinOption(
+                        storage.searchResult.gameId,
+                        storage.searchResult.avatarUrl,
+                        storage.searchResult.username
+                    );
+                } else {
+                    const message = storage.searchResult.cancelled ? 
+                        'Search was cancelled' : 
+                        'Not found in any server';
+                    await this.showError('Player not found', message);
+                }
+            }
+            // If there was an error
+            else if (storage.searchError) {
+                this.progressManager.complete();
+                await this.showError('Search failed', storage.searchError);
+            }
+    
+            // Update cooldown state after everything else
+            await this.updateCooldownState();
+    
+        } catch (error) {
+            console.error('Failed to restore state:', error);
+            // Reset everything on restore failure
+            this.isSearching = false;
+            if (this.progressManager) {
+                this.progressManager.reset();
+            }
+            await browser.storage.local.set({
+                searchState: null,
+                searchResult: null,
+                searchError: null,
+                searchProgress: null
+            });
+        }
+    }
+
+    /**
+     * Restore input value
+     */
+    async restoreInput() {
+        try {
+            const input = document.getElementById('searchInput');
+            if (input) {
+                input.value = this.lastInputValue;
+                // Create and dispatch an input event to trigger any listeners
+                const event = new Event('input', {
+                    bubbles: true,
+                    cancelable: true,
+                });
+                input.dispatchEvent(event);
+            }
+        } catch (error) {
+            console.error('Failed to restore input:', error);
+        }
+    }
+
+    /**
      * Setup event listeners for search functionality
      */
-    setupEventListeners() {
+    async setupEventListeners() {
         const searchButton = document.getElementById('searchButton');
         const input = document.getElementById('searchInput');
     
@@ -241,14 +338,14 @@ export class PlayerFinder {
             
             searchButton.addEventListener('click', async () => {
                 if (!this.isSearching && !(await this.isCoolingDown())) {
-                    this.handleGameSearch();
+                    await this.handleGameSearch();
                 }
             });
     
             input.addEventListener('keypress', async (e) => {
                 if (e.key === 'Enter' && !searchButton.disabled && !this.isSearching && 
                     !(await this.isCoolingDown())) {
-                    this.handleGameSearch();
+                    await this.handleGameSearch();
                 }
             });
         }
@@ -259,7 +356,7 @@ export class PlayerFinder {
             }
             
             this.lastInputValue = input.value;
-            browser.storage.local.set({ lastInput: this.lastInputValue });
+            await browser.storage.local.set({ lastInput: this.lastInputValue });
     
             if (!this.isSearching) {
                 this.progressManager.reset();
@@ -289,267 +386,6 @@ export class PlayerFinder {
                 }
             }
         });
-    }
-
-    /**
-     * Handle game search functionality
-     */
-    async handleGameSearch() {
-        if (this.isSearching) {
-            console.warn('Search already in progress');
-            return;
-        }
-    
-        const input = document.getElementById('searchInput').value.trim();
-        if (!input) {
-            this.showError('Please enter a username or ID');
-            return;
-        }
-    
-        this.setSearchState(true);
-        
-        try {
-            const searchButton = document.getElementById('searchButton');
-            searchButton.textContent = 'Searching...';
-            await this.searchPlayerInGame(input);
-        } catch (error) {
-            console.error('Search failed:', error);
-            this.progressManager.complete();
-            await this.showError('Search failed', error.message);
-        } finally {
-            this.isSearching = false;
-            this.setSearchState(false);
-            this.progressManager.complete();
-            this.updateCooldownState();
-        }
-    }
-
-    /**
-     * Search for a player in the current game
-     */
-    async searchPlayerInGame(input) {
-        try {
-            let username;
-            let targetId;
-            let avatarImageUrl;
-
-            // Get user ID from username or use provided ID
-            if (!API_CONFIG.PATTERNS.USERID.test(input)) {
-                username = input;
-                const userData = await this.api.getUserByNameOrId(input);
-                targetId = userData.data?.[0]?.id;
-            } else {
-                targetId = input;
-            }
-
-            if (!targetId) {
-                await this.progressManager.complete();
-                await this.showError("User doesn't exist!");
-                return;
-            }
-
-            this.progressManager.setProgress(20);
-
-            // Get username if not already known
-            if (!username) {
-                const userData = await this.api.getUserDetails(targetId);
-                username = userData.name;
-            }
-
-            this.progressManager.setProgress(40);
-
-            // Get user avatar
-            const avatarData = await this.api.getUserAvatar(targetId);
-            if (!avatarData.data?.[0]?.imageUrl) {
-                this.progressManager.complete();
-                await this.showError("Failed to get user avatar");
-                return;
-            }
-            avatarImageUrl = avatarData.data[0].imageUrl;
-
-            this.progressManager.setProgress(60);
-
-            // Check user presence
-            const presenceResponse = await this.api.getUserPresence(targetId);
-            const presence = presenceResponse.userPresences?.[0];
-            if (!presence) {
-                this.progressManager.complete();
-                await this.showError("User is offline");
-                return;
-            }
-
-            const statusId = presence.userPresenceType;
-            const statusPlaceId = presence.placeId;
-
-            this.progressManager.setProgress(80);
-
-            if (statusId < 2 || statusId === 3) {
-                this.progressManager.complete();
-                await this.showError(
-                    statusId === 3 ? "Player is in Roblox Studio" : "Player is not playing a game"
-                );
-                return;
-            }
-
-            if (statusPlaceId !== null) {
-                if (statusPlaceId !== parseInt(this.currentPlaceId)) {
-                    this.progressManager.complete();
-                    await this.showPlayerInOtherGame(presence, avatarImageUrl, username);
-                    return;
-                }
-                if (presence.gameId) {
-                    this.progressManager.complete();
-                    await this.displayJoinOption(presence.gameId, avatarImageUrl, username);
-                    return;
-                }
-            }
-
-            this.isSearching = true;
-            await this.showStatus('Starting server search...');
-            
-            // Start background search
-            const message = {
-                type: 'startSearch',
-                placeId: this.currentPlaceId,
-                userId: targetId,
-                avatarUrl: avatarImageUrl,
-                username: username,
-                serverSizeMoreThan5: this.serverSizeMoreThan5
-            };
-
-            try {
-                const response = await browser.runtime.sendMessage(message);
-                
-                if (response.error) {
-                    throw new Error(response.error);
-                }
-
-                if (response.result) {
-                    this.progressManager.complete();
-                    if (response.result.found) {
-                        await this.displayJoinOption(
-                            response.result.gameId,
-                            response.result.avatarUrl,
-                            response.result.username
-                        );
-                    } else {
-                        await this.showError(
-                            'Player not found',
-                            response.result.cancelled ? 'Search was cancelled' : 'Not found in any server'
-                        );
-                    }
-                }
-
-            } catch (error) {
-                console.error('Failed to send search message:', error);
-                throw error;
-            }
-
-        } catch (error) {
-            console.error('Search failed:', error);
-            this.progressManager.complete();
-            await this.showError('Search failed', error.message);
-        } finally {
-            this.isSearching = false;
-            this.setSearchState(false);
-            this.progressManager.complete();
-            this.updateCooldownState();
-        }
-    }
-
-    /**
-     * Check search progress and update UI
-     */
-    async checkSearchProgress() {
-        const storageListener = (changes, area) => {
-            if (area === 'local') {
-                this.handleStorageUpdate();
-            }
-        };
-    
-        browser.storage.onChanged.addListener(storageListener);
-    
-        // Auto-cleanup after 60 seconds
-        const timeout = setTimeout(() => {
-            this.showError('Search timed out', 'No progress for 60 seconds');
-            browser.storage.onChanged.removeListener(storageListener);
-        }, 60000);
-    
-        // Cleanup when search completes
-        const completionListener = (changes, area) => {
-            if (area === 'local' && (changes.searchResult || changes.searchError)) {
-                browser.storage.onChanged.removeListener(storageListener);
-                browser.storage.onChanged.removeListener(completionListener);
-                clearTimeout(timeout);
-            }
-        };
-    
-        browser.storage.onChanged.addListener(completionListener);
-    }
-
-    /**
-     * Handle storage updates
-     */
-    async handleStorageUpdate() {
-        try {
-            const state = await browser.storage.local.get([
-                'searchProgress', 
-                'searchResult',
-                'searchError'
-            ]);
-    
-            if (state.searchProgress) {
-                const progress = state.searchProgress;
-                const timeSinceUpdate = Date.now() - progress.timestamp;
-                
-                // Only update if data is fresh (less than 5 seconds old)
-                if (timeSinceUpdate < 5000) {
-                    this.progressManager.setProgress(progress.progressPercent);
-                    
-                    let statusMessage = 'Starting server search...';
-                    let details = '';
-                    
-                    if (progress.serversChecked > 0) {
-                        statusMessage = 'Searching servers...';
-                        details = `Checked ${progress.serversChecked} servers`;
-                    }
-                    
-                    if (progress.currentBatch !== null) {
-                        statusMessage = 'Processing player data...';
-                        details = `Batch ${progress.currentBatch}/${progress.totalBatches}`;
-                    }
-                    
-                    await this.showStatus(statusMessage, details);
-                }
-            }
-    
-            // Handle final results
-            if (state.searchResult) {
-                this.progressManager.complete();
-                if (state.searchResult.found) {
-                    await this.displayJoinOption(
-                        state.searchResult.gameId,
-                        state.searchResult.avatarUrl,
-                        state.searchResult.username
-                    );
-                } else {
-                    const message = state.searchResult.cancelled 
-                        ? 'Search was cancelled' 
-                        : 'Not found in any server';
-                    await this.showError('Player not found', message);
-                }
-                await this.cleanupSearch();
-            }
-    
-            if (state.searchError) {
-                this.progressManager.complete();
-                await this.showError('Search failed', state.searchError);
-                await this.cleanupSearch();
-            }
-    
-        } catch (error) {
-            console.error('Error handling storage update:', error);
-        }
     }
 
     /**
@@ -692,27 +528,100 @@ export class PlayerFinder {
     }
 
     /**
-     * Get remaining cooldown time
-     */
-    async getRemainingCooldown() {
-        const storage = await browser.storage.local.get(['searchCompleted', 'searchType']);
-        if (!storage.searchCompleted) return 0;
-        
-        const currentTime = Date.now();
-        const cooldownTime = (storage.searchType === 'advanced' ? 
-            API_CONFIG.COOLDOWN_TIME.ADVANCED_SEARCH : 
-            API_CONFIG.COOLDOWN_TIME.PRESENCE_ONLY) * 1000;
-        
-        const remaining = Math.ceil((storage.searchCompleted + cooldownTime - currentTime) / 1000);
-        return Math.max(0, remaining);
-    }
-
-    /**
-     * Update search state
+     * Set search state
      */
     async setSearchState(isSearching) {
         this.isSearching = isSearching;
         await this.updateCooldownState();
+    }
+
+    /**
+     * Setup storage listener
+     */
+    setupStorageListener() {
+        this.storageListener = (changes, area) => {
+            if (area === 'local') {
+                this.handleStorageUpdate();
+            }
+        };
+        browser.storage.onChanged.addListener(this.storageListener);
+    }
+
+    /**
+     * Handle storage updates
+     */
+    async handleStorageUpdate() {
+        try {
+            const state = await browser.storage.local.get([
+                'searchProgress', 
+                'searchResult',
+                'searchError'
+            ]);
+    
+            if (state.searchProgress) {
+                const progress = state.searchProgress;
+                const timeSinceUpdate = Date.now() - progress.timestamp;
+                
+                if (timeSinceUpdate < 5000) {
+                    this.progressManager.setProgress(progress.progressPercent);
+                    
+                    let statusMessage = 'Starting server search...';
+                    let details = '';
+                    
+                    if (progress.serversChecked > 0) {
+                        statusMessage = 'Searching servers...';
+                        details = `Checked ${progress.serversChecked} servers`;
+                    }
+                    
+                    if (progress.currentBatch !== null) {
+                        statusMessage = 'Processing player data...';
+                        details = `Batch ${progress.currentBatch}/${progress.totalBatches}`;
+                    }
+                    
+                    await this.showStatus(statusMessage, details);
+                }
+            }
+    
+            if (state.searchResult) {
+                this.progressManager.complete();
+                if (state.searchResult.found) {
+                    await this.displayJoinOption(
+                        state.searchResult.gameId,
+                        state.searchResult.avatarUrl,
+                        state.searchResult.username
+                    );
+                } else {
+                    const message = state.searchResult.cancelled ? 
+                        'Search was cancelled' : 
+                        'Not found in any server';
+                    await this.showError('Player not found', message);
+                }
+                await this.cleanupSearch();
+            }
+    
+            if (state.searchError) {
+                this.progressManager.complete();
+                await this.showError('Search failed', state.searchError);
+                await this.cleanupSearch();
+            }
+    
+        } catch (error) {
+            console.error('Error handling storage update:', error);
+        }
+    }
+
+    /**
+     * Clean up search state
+     */
+    async cleanupSearch() {
+        this.isSearching = false;
+        await this.setSearchState(false);
+        await browser.storage.local.set({
+            searchState: null,
+            searchResult: null,
+            searchError: null,
+            searchProgress: null
+        });
     }
 
     /**
@@ -766,29 +675,164 @@ export class PlayerFinder {
     }
 
     /**
-     * Clean up search state
+     * Handle game search
      */
-    async cleanupSearch() {
-        this.isSearching = false;
-        this.setSearchState(false);
-        await browser.storage.local.set({
-            searchState: null,
-            searchResult: null,
-            searchError: null,
-            searchProgress: null
-        });
+    async handleGameSearch() {
+        if (this.isSearching) {
+            console.warn('Search already in progress');
+            return;
+        }
+    
+        const input = document.getElementById('searchInput').value.trim();
+        if (!input) {
+            this.showError('Please enter a username or ID');
+            return;
+        }
+    
+        await this.setSearchState(true);
+        
+        try {
+            const searchButton = document.getElementById('searchButton');
+            searchButton.textContent = 'Searching...';
+            await this.searchPlayerInGame(input);
+        } catch (error) {
+            console.error('Search failed:', error);
+            this.progressManager.complete();
+            await this.showError('Search failed', error.message);
+        } finally {
+            this.isSearching = false;
+            await this.setSearchState(false);
+            this.progressManager.complete();
+            await this.updateCooldownState();
+        }
     }
 
     /**
-     * Setup storage listener
+     * Search for player in game
      */
-    setupStorageListener() {
-        this.storageListener = (changes, area) => {
-            if (area === 'local') {
-                this.handleStorageUpdate();
+    async searchPlayerInGame(input) {
+        try {
+            let username;
+            let targetId;
+            let avatarImageUrl;
+
+            if (!API_CONFIG.PATTERNS.USERID.test(input)) {
+                username = input;
+                const userData = await this.api.getUserByNameOrId(input);
+                targetId = userData.data?.[0]?.id;
+            } else {
+                targetId = input;
             }
-        };
-        browser.storage.onChanged.addListener(this.storageListener);
+
+            if (!targetId) {
+                this.progressManager.complete();
+                await this.showError("User doesn't exist!");
+                return;
+            }
+
+            this.progressManager.setProgress(20);
+
+            if (!username) {
+                const userData = await this.api.getUserDetails(targetId);
+                username = userData.name;
+            }
+
+            this.progressManager.setProgress(40);
+
+            const avatarData = await this.api.getUserAvatar(targetId);
+            if (!avatarData.data?.[0]?.imageUrl) {
+                this.progressManager.complete();
+                await this.showError("Failed to get user avatar");
+                return;
+            }
+            avatarImageUrl = avatarData.data[0].imageUrl;
+
+            this.progressManager.setProgress(60);
+
+            const presenceResponse = await this.api.getUserPresence(targetId);
+            const presence = presenceResponse.userPresences?.[0];
+            if (!presence) {
+                this.progressManager.complete();
+                await this.showError("User is offline");
+                return;
+            }
+
+            const statusId = presence.userPresenceType;
+            const statusPlaceId = presence.placeId;
+
+            this.progressManager.setProgress(80);
+
+            if (statusId < 2 || statusId === 3) {
+                this.progressManager.complete();
+                await this.showError(
+                    statusId === 3 ? "Player is in Roblox Studio" : "Player is not playing a game"
+                );
+                return;
+            }
+
+            if (statusPlaceId !== null) {
+                if (statusPlaceId !== parseInt(this.currentPlaceId)) {
+                    this.progressManager.complete();
+                    await this.showPlayerInOtherGame(presence, avatarImageUrl, username);
+                    return;
+                }
+                if (presence.gameId) {
+                    this.progressManager.complete();
+                    await this.displayJoinOption(presence.gameId, avatarImageUrl, username);
+                    return;
+                }
+            }
+
+            this.isSearching = true;
+            await this.showStatus('Starting server search...');
+            
+            const message = {
+                type: 'startSearch',
+                placeId: this.currentPlaceId,
+                userId: targetId,
+                avatarUrl: avatarImageUrl,
+                username: username,
+                serverSizeMoreThan5: this.serverSizeMoreThan5
+            };
+
+            try {
+                const response = await browser.runtime.sendMessage(message);
+                
+                if (response.error) {
+                    throw new Error(response.error);
+                }
+
+                if (response.result) {
+                    this.progressManager.complete();
+                    if (response.result.found) {
+                        await this.displayJoinOption(
+                            response.result.gameId,
+                            response.result.avatarUrl,
+                            response.result.username
+                        );
+                    } else {
+                        await this.showError(
+                            'Player not found',
+                            response.result.cancelled ? 'Search was cancelled' : 'Not found in any server'
+                        );
+                    }
+                }
+
+            } catch (error) {
+                console.error('Failed to send search message:', error);
+                throw error;
+            }
+
+        } catch (error) {
+            console.error('Search failed:', error);
+            this.progressManager.complete();
+            await this.showError('Search failed', error.message);
+        } finally {
+            this.isSearching = false;
+            await this.setSearchState(false);
+            this.progressManager.complete();
+            await this.updateCooldownState();
+        }
     }
 
     /**
